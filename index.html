@@ -476,7 +476,7 @@ function runBots(g){let n=0;while(g.phase!=='done'&&g.cfg.players[curPlayer(g)].
 const PKEYS=["gen","date","source","tileset","players","user","type","seats","seatNumbers","hexShare","hexesPlaced","F_spaces","F_share","F_index","G_spaces","G_share","G_index","R_spaces","R_share","R_index","M_spaces","M_share","M_index","largestType","largestSize","largestShare","largestIndex","matchEdges","matchPerPiece","matchPerTile","hexRounds","avgHexRound","forced","foodPlaced","foodPlaced_F","foodPlaced_G","foodPlaced_R","foodOnOwnSpaces","foodOnOwnIndex","strategiesUsed","contactsPerPiece","mismatchRate","othersContactPerPiece","spreadIndex","foodHabitatIndex","foodSpacingIndex","foodNewHabitatIndex"];
 function sheetRows(g,linkBase){
   const rec=boardRecord(g,{source:'online'}),b=rec.board,keys=Object.keys(b);
-  const row=keys.map(k=>b[k]);row.push(`=HYPERLINK("${linkBase}#${b.code}","Open board")`);
+  const row=keys.map(k=>b[k]);row.push(`=HYPERLINK("${linkBase}?b=${b.code}","Open board")`);
   row.push(Math.max(b.F_max,b.G_max,b.R_max,b.M_max));row.push(+(b.tokens/b.players).toFixed(4));
   return{board:row,players:rec.players.map(p=>PKEYS.map(k=>p[k]??''))};
 }
@@ -832,7 +832,7 @@ window.addEventListener('resize',setSheetH);
 /* ================= START ================= */
 (async()=>{
   buildDefs();
-  const h=(location.hash||'').slice(1);if(h.startsWith('b1')){openReplay(h);return}
+  const qb=new URLSearchParams(location.search).get('b');const h=qb||(location.hash||'').slice(1);if(h&&h.startsWith('b1')){openReplay(h);return}
   msg('Connecting…');
   try{ME.uid=await Store.init()}catch(e){ME.uid=null}
   if(!ME.uid){msg('Couldn’t connect to the game server. Check your connection and reload.',[['Reload',()=>location.reload()]]);return}
