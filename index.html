@@ -474,10 +474,31 @@ function restoreGame(s){
 }
 function runBots(g){let n=0;while(g.phase!=='done'&&g.cfg.players[curPlayer(g)].type==='bot'){if(g.phase==='build')botBuild(g);else botFood(g);n++}return n}
 const PKEYS=["gen","date","source","tileset","players","user","type","seats","seatNumbers","hexShare","hexesPlaced","F_spaces","F_share","F_index","G_spaces","G_share","G_index","R_spaces","R_share","R_index","M_spaces","M_share","M_index","largestType","largestSize","largestShare","largestIndex","matchEdges","matchPerPiece","matchPerTile","hexRounds","avgHexRound","forced","foodPlaced","foodPlaced_F","foodPlaced_G","foodPlaced_R","foodOnOwnSpaces","foodOnOwnIndex","strategiesUsed","contactsPerPiece","mismatchRate","othersContactPerPiece","spreadIndex","foodHabitatIndex","foodSpacingIndex","foodNewHabitatIndex"];
+function spaceWalk(sp,src,ok){const d=new Map([[src,0]]),q=[src];for(let i=0;i<q.length;i++){const a=q[i];for(const b of sp.get(a).adj){if(d.has(b)||!ok(sp.get(b)))continue;d.set(b,d.get(a)+1);q.push(b)}}return d}
+function foodSpacing(g){
+  const B=g.board,T=g.placed,sp=g.sp||spacesOf(B),out={nearest:'',avgDist:'',season4Min:'',season4Avg:'',exteriorEdges:0};
+  B.forEach(c=>{for(const[a,b]of NB)if(!B.has(key(c.q+a,c.s+b)))out.exteriorEdges++});
+  if(T.length<2)return out;
+  const D=T.map(t=>spaceWalk(sp,t.space,()=>true)),dist=(i,j)=>D[i].get(T[j].space)??Infinity;
+  let nn=0,sum=0,pairs=0;
+  for(let i=0;i<T.length;i++){let m=Infinity;for(let j=0;j<T.length;j++)if(j!==i){const d=dist(i,j);m=Math.min(m,d);if(j>i){sum+=d;pairs++}}nn+=m}
+  out.nearest=+(nn/T.length).toFixed(3);out.avgDist=+(sum/pairs).toFixed(3);
+  if(new Set(T.map(t=>t.season)).size===4){const rad=T.map((t,i)=>Math.max(...[0,1,2,3].map(s=>Math.min(...T.map((u,j)=>u.season===s?dist(i,j):Infinity)))));
+    out.season4Min=Math.min(...rad);out.season4Avg=+(rad.reduce((a,b)=>a+b,0)/rad.length).toFixed(3)}
+  return out}
+function foodSpacing2(g){
+  const T=g.placed,sp=g.sp||spacesOf(g.board),out={sameHabDist:'',noMtnDist:'',mixedSeasonHabs:0,sameTypeHabs:0};
+  const avg=okFor=>{let s=0,n=0;for(let i=0;i<T.length;i++){const d=spaceWalk(sp,T[i].space,okFor(T[i]));for(let j=i+1;j<T.length;j++){const v=d.get(T[j].space);if(v!==undefined){s+=v;n++}}}return n?+(s/n).toFixed(3):''};
+  if(T.length>1){const h=t=>sp.get(t.space).hab;out.sameHabDist=avg(t=>x=>x.hab===h(t));out.noMtnDist=avg(()=>x=>x.hab!=='M')}
+  const reg=new Map();let rid=0;for(const n of sp.values()){if(reg.has(n.id))continue;const st=[n.id];reg.set(n.id,rid);while(st.length){const a=st.pop();for(const b of sp.get(a).adj)if(!reg.has(b)&&sp.get(b).hab===n.hab){reg.set(b,rid);st.push(b)}}rid++}
+  const by=new Map();T.forEach(t=>{const r=reg.get(t.space);(by.get(r)||by.set(r,[]).get(r)).push(t)});
+  by.forEach(ts=>{if(new Set(ts.map(t=>t.season)).size>=2)out.mixedSeasonHabs++;const c={};ts.forEach(t=>c[t.food]=(c[t.food]||0)+1);if(Object.values(c).some(v=>v>=2))out.sameTypeHabs++});
+  return out}
 function sheetRows(g,linkBase){
   const rec=boardRecord(g,{source:'online'}),b=rec.board,keys=Object.keys(b);
   const row=keys.map(k=>b[k]);row.push(`=HYPERLINK("${linkBase}?b=${b.code}","Open board")`);
   row.push(Math.max(b.F_max,b.G_max,b.R_max,b.M_max));row.push(+(b.tokens/b.players).toFixed(4));
+  const fsx=foodSpacing(g);row.push(fsx.nearest,fsx.avgDist,fsx.season4Min,fsx.season4Avg,fsx.exteriorEdges);const fs2=foodSpacing2(g);row.push(fs2.sameHabDist,fs2.noMtnDist,fs2.mixedSeasonHabs,fs2.sameTypeHabs);
   return{board:row,players:rec.players.map(p=>PKEYS.map(k=>p[k]??''))};
 }
 
