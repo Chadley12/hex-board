@@ -549,7 +549,8 @@ const Store=window.STORE_MOCK||(()=>{let db,auth;const TS=()=>firebase.firestore
   async createGame(data){const ref=db.collection('games').doc();await ref.set({...data,createdAt:TS(),updatedAt:TS()});return ref.id},
   watch(id,cb,err){return db.collection('games').doc(id).onSnapshot(s=>cb(s.exists?s.data():null),err)},
   async tx(id,fn){const ref=db.collection('games').doc(id);return db.runTransaction(async t=>{const s=await t.get(ref);const r=fn(s.data());if(!r)return null;t.update(ref,{...r.update,updatedAt:TS()});return r.result??null})},
-  async myGames(uid){const q=await db.collection('games').where('hostUid','==',uid).limit(40).get();return q.docs.map(d=>({id:d.id,...d.data()}))}}})();
+  async myGames(uid){const q=await db.collection('games').where('hostUid','==',uid).get();return q.docs.map(d=>({id:d.id,...d.data()}))},
+  async removeGame(id){await db.collection('games').doc(id).delete()}}})();
 
 /* ================= HELPERS ================= */
 const $=id=>document.getElementById(id);
@@ -578,7 +579,13 @@ const label=p=>{const n=G.cfg.players[p].name;return`P${p+1} · ${n}`};
 async function showHome(){
   show('v-home');history.replaceState(null,'',BASE);
   const el=$('home-list');
-  try{const games=(await Store.myGames(ME.uid)).sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));
+  try{const sec=x=>(x&&x.seconds)||0,now=Date.now()/1000,DAY=86400;
+    const all=(await Store.myGames(ME.uid)).sort((a,b)=>sec(b.updatedAt||b.createdAt)-sec(a.updatedAt||a.createdAt));
+    // Keep the 5 most recent finished games (already sent to the sheet); clear games untouched for 7 days.
+    const done=all.filter(g=>g.status==='done'),open=all.filter(g=>g.status!=='done');
+    const drop=[...done.slice(5).filter(g=>g.posted),...open.filter(g=>now-sec(g.updatedAt||g.createdAt)>7*DAY&&sec(g.updatedAt||g.createdAt)>0)];
+    if(Store.removeGame)drop.forEach(g=>Store.removeGame(g.id).catch(()=>{}));
+    const gone=new Set(drop.map(g=>g.id)),games=[...open,...done].filter(g=>!gone.has(g.id));
     if(!games.length){el.innerHTML='<p class="fine">No games yet. Host one to get started.</p>';return}
     el.innerHTML=games.map(g=>{const me=g.people.find(p=>p.isHost)||g.people[0];const st=g.status==='done'?'Finished':g.status==='food'?'Placing food':'Building';
       return`<div class="item"><div class="grow"><b>${esc(g.title)}</b><span class="fine">${st} · ${g.people.map(p=>esc(p.name)).join(', ')}</span></div><a class="btn" href="${linkFor(g.id,me.token)}">Open</a><button class="ghost" data-links="${g.id}">Links</button></div>`}).join('');
@@ -652,7 +659,7 @@ function openGame(id,tok){
   GAME.unsub=Store.watch(id,onDoc,()=>msg('This game couldn’t be loaded. Check the link and your connection.',[['Home',()=>showHome()]]));
 }
 function onDoc(d){
-  if(!d){msg('This game doesn’t exist anymore.',[['Home',()=>showHome()]]);return}
+  if(!d){msg('This game has been cleared. Finished games stay in the sheet, where “Open board” still shows the final board.',[['Home',()=>showHome()]]);return}
   const person=d.people.find(p=>p.token===GAME.tok);
   if(!person){msg('This link doesn’t match a player in this game. Ask the host for your link.');return}
   GAME.doc=d;GAME.person=person;GAME.mySeats=person.seats;GAME.version=d.version;
