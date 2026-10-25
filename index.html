@@ -46,6 +46,7 @@ h1,h2{font-family:var(--f-display);font-weight:600;letter-spacing:.02em;margin:0
 .stepper button{width:40px;padding:0}
 .stepper output{min-width:28px;text-align:center;font:600 22px var(--f-display);font-variant-numeric:tabular-nums}
 .check{display:flex;align-items:center;gap:10px;cursor:pointer;color:var(--ink)}
+details.custom{border:1px solid var(--line,#ddd);border-radius:10px;padding:8px 12px;margin:6px 0}details.custom summary{cursor:pointer;font-weight:600;padding:4px 0}details.custom .row{margin-top:8px}
 .check input{width:20px;height:20px;accent-color:var(--accent)}
 .plist{display:flex;flex-direction:column;gap:8px}
 .prow{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,12rem);gap:8px;align-items:center;background:var(--panel);border-radius:10px;padding:8px 10px}
@@ -146,6 +147,13 @@ input[type=tel]{background:var(--panel-2);border:1px solid var(--line);border-ra
     <div class="row"><label for="pc-out">Players</label>
       <div class="stepper"><button id="pc-minus" aria-label="Fewer players">−</button><output id="pc-out">4</output><button id="pc-plus" aria-label="More players">+</button></div></div>
     <label class="check"><input type="checkbox" id="use-start" checked> Use the starting tile</label>
+    <details class="custom"><summary>Custom setup (optional)</summary>
+      <div class="row"><label for="cs-stack">Tiles</label><select id="cs-stack" class="grow"><option value="">Normal random draw</option><option value="F">Most rainforest</option><option value="G">Most savanna</option><option value="R">Most river</option><option value="M">Most mountain</option></select></div>
+      <div class="row"><label for="cs-F">Rainforest food</label><select id="cs-F" class="grow"><option value="">Random</option><option value="4">Abundant</option><option value="5">Standard</option><option value="6">Sparse</option></select></div>
+      <div class="row"><label for="cs-G">Savanna food</label><select id="cs-G" class="grow"><option value="">Random</option><option value="4">Abundant</option><option value="5">Standard</option><option value="6">Sparse</option></select></div>
+      <div class="row"><label for="cs-R">River food</label><select id="cs-R" class="grow"><option value="">Random</option><option value="4">Abundant</option><option value="5">Standard</option><option value="6">Sparse</option></select></div>
+      <p class="fine">“Most …” uses only the tiles with the most of that habitat, and all of that habitat’s single hexes are included (shuffled in with the rest). With the starting tile off, the first piece is one of those tiles too. Custom games are marked “online custom” in the sheet.</p>
+    </details>
     <div id="seats" class="plist"></div>
     <p class="fine">Pick saved players from the list, or choose “New person” to add someone (their name and number are saved for next time). The same person can take more than one seat.</p>
     <p class="err" id="host-err" hidden></p>
@@ -256,6 +264,11 @@ function newGame(cfg){
   const g={cfg,P,board,tid:0,deck:[],singles:shuffle([...SINGLES]).slice(0,2*P),left:Array.from({length:P},()=>({t:3,h:2})),
     turn:0,phase:'build',log:[],tilesUsed:[],last:P-1,food:null,foodIdx:0,foodPlayer:0,placed:[]};
   let ids=TILES.map((_,i)=>i);
+  if(cfg.stack){/* stacked setup: only the tiles richest in one habitat; that habitat's singles first */
+    const h=cfg.stack,sc=i=>TILES[i].reduce((a,x)=>a+(x[2].split('').every(c=>c===h)?2:x[2].includes(h)?1:0),0);
+    const top=ids.slice(1).map(i=>({i,s:sc(i)+Math.random()*1e-3})).sort((a,b)=>b.s-a.s).slice(0,3*P+(cfg.useStart?0:1)).map(x=>x.i);
+    ids=cfg.useStart?[0].concat(top):top;
+    g.singles=shuffle([...SINGLES].filter(c=>c===h).concat(shuffle([...SINGLES].filter(c=>c!==h))).slice(0,2*P))}
   if(cfg.useStart){place(g,TILES[0],0,'start',-1);ids=ids.slice(1);g.startRec={idx:0,rot:0,anchor:key(...anchorOf(TILES[0]))}}
   else{const i=pick(ids),k=Math.floor(Math.random()*6),rc=rotHex(TILES[i],k);ids=ids.filter(x=>x!==i);place(g,rc,i,'start',-1);g.startRec={idx:i,rot:k,anchor:key(...anchorOf(rc))}}
   g.deck=shuffle(ids);g.deck0=[...g.deck];g.singles0=[...g.singles];return g;
@@ -279,7 +292,7 @@ function startFood(g){
   if(g.foodPreset){g.food={info:g.foodPreset.info,stack:g.foodPreset.stack};g.foodIdx=0;g.foodPlayer=g.last;g.occ=new Map();if(!g.food.stack.length)g.phase='done';else while(g.foodIdx<g.food.stack.length&&!foodLegal(g).spaces.length)g.foodIdx++;if(g.foodIdx>=g.food.stack.length)g.phase='done';return}
   const totals={F:0,G:0,R:0};g.sp.forEach(s=>{if(s.hab in totals)totals[s.hab]+=s.w});
   const info={};let stack=[];
-  for(const h of['F','G','R']){const[name,div]=pick(ABUND);const pool=[];POOLS[h].forEach(([f,c])=>c.forEach((n,si)=>{for(let i=0;i<n;i++)pool.push({hab:h,food:f,season:si})}));
+  for(const h of['F','G','R']){const fx=g.cfg.divs&&g.cfg.divs[h];const[name,div]=fx?ABUND.find(a=>a[1]===fx):pick(ABUND);const pool=[];POOLS[h].forEach(([f,c])=>c.forEach((n,si)=>{for(let i=0;i<n;i++)pool.push({hab:h,food:f,season:si})}));
     const want=Math.floor(totals[h]/div),n=Math.min(want,pool.length);stack=stack.concat(shuffle(pool).slice(0,n));info[h]={name,div,spaces:totals[h],n,want}}
   g.food={info,stack:shuffle(stack)};g.foodIdx=0;g.foodPlayer=g.last;g.occ=new Map();
   if(!stack.length)g.phase='done';
@@ -453,13 +466,13 @@ function decodeBoard(code){
 
 /* ---- live game state: serialize / restore ---- */
 function serializeGame(g){
-  return{v:1,P:g.P,players:g.cfg.players,useStart:g.cfg.useStart,start:g.startRec,deck0:g.deck0,singles0:g.singles0,
+  return{v:1,P:g.P,players:g.cfg.players,useStart:g.cfg.useStart,stack:g.cfg.stack||null,divs:g.cfg.divs||null,start:g.startRec,deck0:g.deck0,singles0:g.singles0,
     moves:g.log.filter(l=>l.phase==='build').map(l=>({p:l.player,k:l.piece==='tile'?'t':'h',i:l.tile,h:l.hab,r:l.rot,a:l.anchor,st:l.strategy||null})),
     food:g.food?{info:g.food.info,stack:g.food.stack}:null,
     fmoves:g.log.filter(l=>l.phase==='food').map(l=>({p:l.player,s:l.space,st:l.strategy||null}))};
 }
 function restoreGame(s){
-  const g={cfg:{players:s.players,useStart:s.useStart},P:s.P,board:new Map(),tid:0,deck:[...s.deck0],deck0:s.deck0,singles:[...s.singles0],singles0:s.singles0,
+  const g={cfg:{players:s.players,useStart:s.useStart,stack:s.stack||null,divs:s.divs||null},P:s.P,board:new Map(),tid:0,deck:[...s.deck0],deck0:s.deck0,singles:[...s.singles0],singles0:s.singles0,
     left:Array.from({length:s.P},()=>({t:3,h:2})),turn:0,phase:'build',log:[],tilesUsed:[],last:s.P-1,food:null,foodIdx:0,foodPlayer:0,placed:[],foodPreset:s.food};
   const st=s.start,sh=rotHex(TILES[st.idx],st.rot),SA=anchorOf(sh),[sq,ss]=st.anchor.split(',').map(Number);
   place(g,sh.map(([a,b,t])=>[a+sq-SA[0],b+ss-SA[1],t]),st.idx,'start',-1);g.startRec=st;
@@ -495,7 +508,7 @@ function foodSpacing2(g){
   by.forEach(ts=>{if(new Set(ts.map(t=>t.season)).size>=2)out.mixedSeasonHabs++;const c={};ts.forEach(t=>c[t.food]=(c[t.food]||0)+1);if(Object.values(c).some(v=>v>=2))out.sameTypeHabs++});
   return out}
 function sheetRows(g,linkBase){
-  const rec=boardRecord(g,{source:'online'}),b=rec.board,keys=Object.keys(b);
+  const rec=boardRecord(g,{source:(g.cfg.stack||g.cfg.divs)?'online custom'+(g.cfg.stack?' (most '+HNAME[g.cfg.stack]+' tiles)':''):'online'}),b=rec.board,keys=Object.keys(b);
   const row=keys.map(k=>b[k]);row.push(`=HYPERLINK("${linkBase}?b=${b.code}","Open board")`);
   row.push(Math.max(b.F_max,b.G_max,b.R_max,b.M_max));row.push(+(b.tokens/b.players).toFixed(4));
   const fsx=foodSpacing(g);row.push(fsx.nearest,fsx.avgDist,fsx.season4Min,fsx.season4Avg,fsx.exteriorEdges);const fs2=foodSpacing2(g);row.push(fs2.sameHabDist,fs2.noMtnDist,fs2.mixedSeasonHabs,fs2.sameTypeHabs);
@@ -652,7 +665,8 @@ $('host-create').onclick=async()=>{
         if(ex)p=person('r:'+ex.id,ex.name,ex.phone);else{p=person(k,nm,ph);if(!p.saved){p.saved=true;try{await Store.saveRoster(ME.uid,{name:nm,phone:ph})}catch(e){}}}}
       p.seats.push(i);players.push({type:'me',name:p.name})}
     people.forEach(p=>delete p.saved);
-    const g=newGame({players,useStart:$('use-start').checked});runBots(g);
+    const cdiv={};let anyDiv=false;for(const h of'FGR'){const v=+$('cs-'+h).value;if(v){cdiv[h]=v;anyDiv=true}}
+    const g=newGame({players,useStart:$('use-start').checked,stack:$('cs-stack').value||null,divs:anyDiv?cdiv:null});runBots(g);
     const data={hostUid:ME.uid,title:$('game-title').value.trim()||'Hex board',version:1,status:g.phase,state:JSON.stringify(serializeGame(g)),people,turnSeat:g.phase==='done'?-1:curPlayer(g),pending:null,posted:g.phase==='done'};
     const id=await Store.createGame(data);
     if(g.phase==='done'){GAME.id=id;postToSheet(g)}
